@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/strings.dart';
-import '../auth/auth_view.dart';
 import '../chat/conversations_view.dart';
 import '../listing/add_listing_view.dart';
 import '../listing/listing_detail_view.dart';
 import '../listing/requests_view.dart';
+import '../profile/profile_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -18,23 +18,9 @@ class HomeView extends StatefulWidget {
 class _HomeViewState extends State<HomeView> {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  // Aktif seçili kategoriyi tutacak state değişkeni
   String _selectedCategory = "Hepsi";
-
-  // Kategoriler listesi
   final List<String> _categories = ["Hepsi", "Abonelik", "Yolculuk", "Ev / Oda", "Alışveriş"];
 
-  // Çıkış yapma fonksiyonu
-  Future<void> _signOut() async {
-    await _supabase.auth.signOut();
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const AuthView()),
-      );
-    }
-  }
-
-  // Supabase'den ilanları çeken canlı Stream fonksiyonu
   Stream<List<Map<String, dynamic>>> _fetchListings() {
     if (_selectedCategory != "Hepsi") {
       return _supabase
@@ -62,7 +48,6 @@ class _HomeViewState extends State<HomeView> {
         backgroundColor: AppColors.primary,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          // CANLI SOHBET ODALARINA GEÇİŞ BUTONU (Buradan göreceksin kanka)
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
             tooltip: "Mesajlarım",
@@ -72,7 +57,6 @@ class _HomeViewState extends State<HomeView> {
               );
             },
           ),
-          // Gelen Başvuruları Görme Butonu
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.white),
             tooltip: "Başvurular",
@@ -83,9 +67,13 @@ class _HomeViewState extends State<HomeView> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            tooltip: "Çıkış Yap",
-            onPressed: _signOut,
+            icon: const Icon(Icons.person_outline, color: Colors.white),
+            tooltip: "Profilim",
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const ProfileView()),
+              );
+            },
           ),
         ],
       ),
@@ -99,12 +87,11 @@ class _HomeViewState extends State<HomeView> {
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.secondary),
             ),
             const Text(
-              "Kampüsündeki güncel maliyet ortaklıklarına göz at.",
+              "Campaigns altındaki güncel maliyet ortaklıklarına göz at.",
               style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 20),
 
-            // Kategori Butonları
             SizedBox(
               height: 40,
               child: ListView(
@@ -116,7 +103,6 @@ class _HomeViewState extends State<HomeView> {
             ),
             const SizedBox(height: 20),
 
-            // Canlı İlanlar Listesi
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
                 stream: _fetchListings(),
