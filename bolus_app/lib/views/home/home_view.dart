@@ -4,6 +4,7 @@ import '../../core/constants/colors.dart';
 import '../../core/constants/strings.dart';
 import '../auth/auth_view.dart';
 import '../listing/add_listing_view.dart';
+import '../listing/listing_detail_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -29,6 +30,23 @@ class _HomeViewState extends State<HomeView> {
         MaterialPageRoute(builder: (context) => const AuthView()),
       );
     }
+  }
+
+  // Supabase'den ilanları çeyen canlı Stream fonksiyonu
+  Stream<List<Map<String, dynamic>>> _fetchListings() {
+    if (_selectedCategory != "Hepsi") {
+      return _supabase
+          .from('bolus_listings')
+          .stream(primaryKey: ['id'])
+          .order('created_at', ascending: false)
+          .map((data) => data.where((item) => item['category'] == _selectedCategory && item['is_active'] == true).toList());
+    }
+
+    return _supabase
+        .from('bolus_listings')
+        .stream(primaryKey: ['id'])
+        .order('created_at', ascending: false)
+        .map((data) => data.where((item) => item['is_active'] == true).toList());
   }
 
   @override
@@ -65,7 +83,7 @@ class _HomeViewState extends State<HomeView> {
             ),
             const SizedBox(height: 20),
 
-            // Kategori Butonları (Yatay Kaydırılabilir ve Dinamik)
+            // Kategori Butonları
             SizedBox(
               height: 40,
               child: ListView(
@@ -77,25 +95,49 @@ class _HomeViewState extends State<HomeView> {
             ),
             const SizedBox(height: 20),
 
-            // İlanlar Listesi (Şimdilik Tasarım Amaçlı Statik)
+            // Canlı İlanlar Listesi
             Expanded(
-              child: ListView.builder(
-                itemCount: 3, 
-                itemBuilder: (context, index) {
-                  return _buildListingCard();
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _fetchListings(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(child: Text("Veriler yüklenirken hata oluştu: ${snapshot.error}"));
+                  }
+
+                  final listings = snapshot.data ?? [];
+
+                  if (listings.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        "Bu kategoride henüz aktif bir bölüşme ilanı yok.",
+                        style: TextStyle(color: Colors.grey, fontSize: 16),
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    itemCount: listings.length,
+                    itemBuilder: (context, index) {
+                      final listing = listings[index];
+                      return _buildListingCard(listing);
+                    },
+                  );
                 },
               ),
             ),
           ],
         ),
       ),
-      // Yeni İlan Ekleme Butonu (AddListingView'a Bağlandı)
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
-        onPressed: () {
-          Navigator.of(context).push(
+        onPressed: () async {
+          await Navigator.of(context).push(
             MaterialPageRoute(builder: (context) => const AddListingView()),
           );
         },
@@ -126,8 +168,15 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
-  // İlan Kart Tasarımı
-  Widget _buildListingCard() {
+  // İlan Kart Tasarımı (Detay Ekranına Bağlandı)
+  Widget _buildListingCard(Map<String, dynamic> listing) {
+    final category = listing['category'] ?? 'Diğer';
+    final title = listing['title'] ?? 'Başlıksız İlan';
+    final description = listing['description'] ?? 'Açıklama belirtilmemiş.';
+    final cost = listing['per_person_cost']?.toString() ?? '0';
+    final currentParticipants = listing['current_participants'] ?? 1;
+    final maxParticipants = listing['max_participants'] ?? 1;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
@@ -147,26 +196,26 @@ class _HomeViewState extends State<HomeView> {
                     color: AppColors.primary.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    "Abonelik",
-                    style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 12),
+                  child: Text(
+                    category,
+                    style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                 ),
-                const Text(
-                  "45 TL / ay",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
+                Text(
+                  "$cost TL / ay",
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            const Text(
-              "YouTube Premium Aile Üyeliği Ortaklığı",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 6),
-            const Text(
-              "Grupta son 2 kişilik yer kaldı. edu.tr doğrulaması olanlar önceliklidir.",
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+            Text(
+              description,
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -176,15 +225,22 @@ class _HomeViewState extends State<HomeView> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.people_outline, size: 18, color: Colors.grey),
-                    SizedBox(width: 4),
-                    Text("3 / 5 Kişi", style: TextStyle(color: Colors.grey)),
+                    const Icon(Icons.people_outline, size: 18, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text("$currentParticipants / $maxParticipants Kişi", style: const TextStyle(color: Colors.grey)),
                   ],
                 ),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    // Detay Gör butonuna basılınca yeni ekranı açıyoruz
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => ListingDetailView(listing: listing),
+                      ),
+                    );
+                  },
                   child: const Row(
                     children: [
                       Text("Detayları Gör", style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
