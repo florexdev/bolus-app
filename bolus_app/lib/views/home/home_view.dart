@@ -3,8 +3,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/strings.dart';
 import '../auth/auth_view.dart';
+import '../chat/conversations_view.dart';
 import '../listing/add_listing_view.dart';
 import '../listing/listing_detail_view.dart';
+import '../listing/requests_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -32,7 +34,7 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
-  // Supabase'den ilanları çeyen canlı Stream fonksiyonu
+  // Supabase'den ilanları çeken canlı Stream fonksiyonu
   Stream<List<Map<String, dynamic>>> _fetchListings() {
     if (_selectedCategory != "Hepsi") {
       return _supabase
@@ -60,6 +62,26 @@ class _HomeViewState extends State<HomeView> {
         backgroundColor: AppColors.primary,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          // CANLI SOHBET ODALARINA GEÇİŞ BUTONU (Buradan göreceksin kanka)
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+            tooltip: "Mesajlarım",
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const ConversationsView()),
+              );
+            },
+          ),
+          // Gelen Başvuruları Görme Butonu
+          IconButton(
+            icon: const Icon(Icons.notifications_none, color: Colors.white),
+            tooltip: "Başvurular",
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const RequestsView()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: "Çıkış Yap",
@@ -72,7 +94,6 @@ class _HomeViewState extends State<HomeView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Kampüs Bilgisi Karşılama Alanı
             const Text(
               "Selam! 👋",
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.secondary),
@@ -145,7 +166,6 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
-  // Kategori Filtre Buton Tasarımı
   Widget _buildCategoryChip(String label, {required bool isActive}) {
     return Container(
       margin: const EdgeInsets.only(right: 8),
@@ -168,7 +188,6 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
-  // İlan Kart Tasarımı (Detay Ekranına Bağlandı)
   Widget _buildListingCard(Map<String, dynamic> listing) {
     final category = listing['category'] ?? 'Diğer';
     final title = listing['title'] ?? 'Başlıksız İlan';
@@ -234,7 +253,6 @@ class _HomeViewState extends State<HomeView> {
                 ),
                 TextButton(
                   onPressed: () {
-                    // Detay Gör butonuna basılınca yeni ekranı açıyoruz
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => ListingDetailView(listing: listing),

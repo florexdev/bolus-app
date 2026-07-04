@@ -23,7 +23,7 @@ class _ListingDetailViewState extends State<ListingDetailView> {
       if (currentUser == null) throw Exception("Oturum açık değil.");
 
       if (widget.listing['user_id'] == currentUser.id) {
-        throw Exception("Kendi açtığın ilana başvuru yapamazsın kanka.");
+        throw Exception("Kendi açtığın ilana başvuru yapamazsın.");
       }
 
       // participants tablosuna başvuru satırı ekliyoruz
