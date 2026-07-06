@@ -1,31 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/colors.dart';
+import '../../core/providers/supabase_providers.dart';
 
-class ChatView extends StatefulWidget {
+class ChatView extends ConsumerStatefulWidget {
   final String conversationId;
 
   const ChatView({super.key, required this.conversationId});
 
   @override
-  State<ChatView> createState() => _ChatViewState();
+  ConsumerState<ChatView> createState() => _ChatViewState();
 }
 
-class _ChatViewState extends State<ChatView> {
-  final SupabaseClient _supabase = Supabase.instance.client;
+class _ChatViewState extends ConsumerState<ChatView> {
   final _messageController = TextEditingController();
   bool _isSending = false;
 
-  // Odaya ait mesajları canlı olarak çeken Stream
-  Stream<List<Map<String, dynamic>>> _fetchMessages() {
-    return _supabase
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .eq('conversation_id', widget.conversationId)
-        .order('created_at', ascending: true);
-  }
-
-  // Mesaj gönderme fonksiyonu
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
@@ -34,10 +24,11 @@ class _ChatViewState extends State<ChatView> {
     setState(() => _isSending = true);
 
     try {
-      final myUid = _supabase.auth.currentUser?.id;
+      final supabase = ref.read(supabaseClientProvider);
+      final myUid = ref.read(currentUserProvider)?.id;
       if (myUid == null) throw Exception("Oturum bulunamadı.");
 
-      await _supabase.from('messages').insert({
+      await supabase.from('messages').insert({
         'conversation_id': widget.conversationId,
         'sender_id': myUid,
         'message_text': text,
@@ -45,11 +36,14 @@ class _ChatViewState extends State<ChatView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Mesaj gönderilemedi: ${e.toString()}"), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text("Mesaj gönderilemedi: ${e.toString().replaceAll("Exception:", "")}"), 
+            backgroundColor: Colors.redAccent
+          ),
         );
       }
     } finally {
-      setState(() => _isSending = false);
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -61,7 +55,8 @@ class _ChatViewState extends State<ChatView> {
 
   @override
   Widget build(BuildContext context) {
-    final myUid = _supabase.auth.currentUser?.id;
+    final myUid = ref.watch(currentUserProvider)?.id;
+    final messagesAsync = ref.watch(chatMessagesStreamProvider(widget.conversationId));
 
     return Scaffold(
       appBar: AppBar(
@@ -73,15 +68,8 @@ class _ChatViewState extends State<ChatView> {
         children: [
           // Mesaj listesi alanı
           Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _fetchMessages(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final messages = snapshot.data ?? [];
-
+            child: messagesAsync.when(
+              data: (messages) {
                 if (messages.isEmpty) {
                   return const Center(
                     child: Text("Henüz mesaj yok. İlk mesajı sen yaz! 👋", style: TextStyle(color: Colors.grey)),
@@ -93,7 +81,7 @@ class _ChatViewState extends State<ChatView> {
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
-                    final isMe = msg['sender_id'] == myUid;
+                    final isMe = msg.senderId == myUid;
 
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -108,7 +96,7 @@ class _ChatViewState extends State<ChatView> {
                           ),
                         ),
                         child: Text(
-                          msg['message_text'] ?? '',
+                          msg.messageText,
                           style: TextStyle(color: isMe ? Colors.white : Colors.black87, fontSize: 15),
                         ),
                       ),
@@ -116,6 +104,13 @@ class _ChatViewState extends State<ChatView> {
                   },
                 );
               },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(
+                child: Text(
+                  "Mesajlar yüklenirken hata oluştu: ${err.toString()}",
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+              ),
             ),
           ),
           
@@ -132,6 +127,7 @@ class _ChatViewState extends State<ChatView> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     ),
+                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
                 const SizedBox(width: 8),

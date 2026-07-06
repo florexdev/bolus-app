@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/colors.dart';
+import '../../core/providers/supabase_providers.dart';
 
-class AddListingView extends StatefulWidget {
+class AddListingView extends ConsumerStatefulWidget {
   const AddListingView({super.key});
 
   @override
-  State<AddListingView> createState() => _AddListingViewState();
+  ConsumerState<AddListingView> createState() => _AddListingViewState();
 }
 
-class _AddListingViewState extends State<AddListingView> {
+class _AddListingViewState extends ConsumerState<AddListingView> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -20,7 +21,6 @@ class _AddListingViewState extends State<AddListingView> {
   final List<String> _categories = ["Abonelik", "Yolculuk", "Ev / Oda", "Alışveriş"];
   
   bool _isLoading = false;
-  final SupabaseClient _supabase = Supabase.instance.client;
 
   Future<void> _createListing() async {
     if (!_formKey.currentState!.validate()) return;
@@ -28,36 +28,50 @@ class _AddListingViewState extends State<AddListingView> {
     setState(() => _isLoading = true);
 
     try {
-      final currentUser = _supabase.auth.currentUser;
+      final supabase = ref.read(supabaseClientProvider);
+      final currentUser = ref.read(currentUserProvider);
       if (currentUser == null) throw Exception("Oturum açık değil.");
 
-      // Supabase bolus_listings tablosuna veri yazıyoruz
-      await _supabase.from('bolus_listings').insert({
+      final double perPersonCost = double.parse(_costController.text.trim());
+      final int maxParticipants = int.parse(_maxParticipantsController.text.trim());
+
+      if (maxParticipants <= 1) {
+        throw Exception("Toplam kişi sınırı kendiniz dahil en az 2 kişi olmalıdır.");
+      }
+
+      final myProfile = ref.read(myProfileProvider).value;
+      final String? city = myProfile?.city;
+
+      await supabase.from('bolus_listings').insert({
         'user_id': currentUser.id,
         'category': _selectedCategory,
         'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
-        'per_person_cost': double.parse(_costController.text.trim()),
-        'max_participants': int.parse(_maxParticipantsController.text.trim()),
+        'per_person_cost': perPersonCost,
+        'max_participants': maxParticipants,
         'current_participants': 1, // İlanı açan kişi otomatik dahil
         'is_active': true,
         'expires_at': DateTime.now().add(const Duration(days: 30)).toIso8601String(), // 30 gün geçerli
+        'city': city, // Kullanıcının profilindeki şehri ilana kopyalıyoruz
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("İlan başarıyla yayınlandı!"), backgroundColor: AppColors.primary),
         );
-        Navigator.of(context).pop(true); // Başarılı olunca ana sayfaya dön ve yenileme sinyali ver
+        Navigator.of(context).pop(true);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Hata: ${e.toString()}"), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text(e.toString().replaceAll("Exception:", "")), 
+            backgroundColor: Colors.redAccent
+          ),
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -87,7 +101,7 @@ class _AddListingViewState extends State<AddListingView> {
             children: [
               // Kategori Seçimi
               DropdownButtonFormField<String>(
-                value: _selectedCategory,
+                initialValue: _selectedCategory,
                 decoration: InputDecoration(
                   labelText: "Kategori",
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -109,7 +123,7 @@ class _AddListingViewState extends State<AddListingView> {
                   hintText: "Örn: Netflix UHD 4 Kişilik Ortaklık",
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                validator: (val) => val == null || val.isEmpty ? "Başlık boş bırakılamaz" : null,
+                validator: (val) => val == null || val.trim().isEmpty ? "Başlık boş bırakılamaz" : null,
               ),
               const SizedBox(height: 20),
 
@@ -122,7 +136,7 @@ class _AddListingViewState extends State<AddListingView> {
                   hintText: "Ödemelerin ne zaman yapılacağı, kurallar vb...",
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                validator: (val) => val == null || val.isEmpty ? "Açıklama boş bırakılamaz" : null,
+                validator: (val) => val == null || val.trim().isEmpty ? "Açıklama boş bırakılamaz" : null,
               ),
               const SizedBox(height: 20),
 
@@ -132,12 +146,16 @@ class _AddListingViewState extends State<AddListingView> {
                   Expanded(
                     child: TextFormField(
                       controller: _costController,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         labelText: "Kişi Başı Maliyet (TL)",
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      validator: (val) => val == null || val.isEmpty ? "Maliyet giriniz" : null,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return "Maliyet giriniz";
+                        if (double.tryParse(val.trim()) == null) return "Geçersiz sayı";
+                        return null;
+                      },
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -150,7 +168,13 @@ class _AddListingViewState extends State<AddListingView> {
                         hintText: "Örn: 4",
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      validator: (val) => val == null || val.isEmpty ? "Kişi sayısı giriniz" : null,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return "Kişi sayısı giriniz";
+                        final parsed = int.tryParse(val.trim());
+                        if (parsed == null) return "Geçersiz tam sayı";
+                        if (parsed <= 1) return "En az 2 olmalı";
+                        return null;
+                      },
                     ),
                   ),
                 ],
